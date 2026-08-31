@@ -1,0 +1,7 @@
+numpy==2.5.1 
+pandas==3.0.5 
+altair==6.2.2 
+panel==1.9.3 
+streamlit==1.61.1 
+matplotlib==3.11.1 
+wordcloud==1.9.6
