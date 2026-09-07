@@ -8,8 +8,36 @@ import matplotlib.pyplot as plt
 from wordcloud import WordCloud, STOPWORDS
 
 def load_preprocess_data():
+  if os.path.exists("datasets/apk_data.parquet"):
+    apk_data = pd.read_parquet("datasets/apk_data.parquet")
+  else:
+    apk_data = pd.read_csv("datasets/Google-Playstore.csv", usecols=[
+    "App Name",
+    "App Id",
+    "Category",
+    "Rating",
+    "Rating Count",
+    "Installs",
+    "Minimum Installs",
+    "Maximum Installs",
+    "Free",
+    "Price",
+    "Currency",
+    "Size",
+    "Minimum Android",
+    "Content Rating",
+    "Ad Supported",
+    "In App Purchases",
+    "Editors Choice",
+    "Developer Id"
+    ])
 
-  apk_data = pd.read_parquet("datasets/apk_data.parquet")
+    # Rellenar el nombre de aplicacion con el id de la app, si no esta disponible
+    apk_data["App Name"] = apk_data["App Name"].fillna(apk_data["App Id"])
+
+    apk_data = load_permissions_data(apk_data)
+    apk_data = load_privacy_policy_and_service_terms(apk_data)
+    apk_data.to_parquet("datasets/apk_data.parquet")
 
   return apk_data
 
@@ -48,10 +76,8 @@ def load_privacy_policy_and_service_terms(apk_data):
 def free_paid_apps_chart(apk_data):
   free_paid_apps_data = apk_data.groupby("Free").count()["App Name"]
   app_count = apk_data["App Name"].count()
-  #free_paid_apps_df = pd.DataFrame([{"Type": 'Free', "Count": free_paid_apps_data[True]}, {"Type": 'Paid', "Count": free_paid_apps_data[False]}])
   free_paid_apps_df = pd.DataFrame([['Free', (free_paid_apps_data[True] / app_count) * 100], ['Paid', (free_paid_apps_data[False] / app_count) * 100]], columns=["Type", "Percentage"])
 
-  #TODO comentar colores complementarios, tooltip para ver porcentajes, porcentajes con dos decimales
   free_paid_apps_chart = alt.Chart(free_paid_apps_df).mark_arc().encode(
       theta="Percentage",
       color=alt.Color(
@@ -82,7 +108,6 @@ def calculate_estimated_revenue(apk_data):
     # para obtener el revenue en millones, para una mejor escala
     apk_paid_data['Revenue (USD millions)'] = apk_paid_data['Estimated Revenue'] / (10 ** 6)
 
-
     return apk_paid_data
 
 def get_categories(apk_paid_data):
@@ -110,21 +135,18 @@ def most_revenue_chart(apk_paid_data, category = None, developer = None):
         revenue_title = "Revenue"
 
     most_revenue_apps = most_revenue_apps.head(20)
-    #TODO comentar grid False
-    #TODO filtrar por categoria, developer?
-    #TODO input para seleccionar mas de 20?
-    #TODO comentar developer usar campo revenue sin escalar
+
     most_revenue_chart = (
         alt.Chart(most_revenue_apps)
         .mark_bar(
-            color="#306998",  # Python Blue
+            color="#306998",
             cornerRadiusEnd=4,
         )
         .encode(
             x=alt.X(
                 revenue_field,
                 title=revenue_title,
-                sort="x",  # Sort by x value descending
+                sort="x",
                 axis=alt.Axis(labelFontSize=18, titleFontSize=22),
             ),
             y=alt.Y("App Name", title="App Name", axis=alt.Axis(labelFontSize=18, titleFontSize=22), sort='-x'),
@@ -136,7 +158,6 @@ def most_revenue_chart(apk_paid_data, category = None, developer = None):
         .properties(
             width=1400, height=850, title=alt.Title(title, fontSize=20, anchor="middle")
         )
-        #.configure_axis(grid=True, gridOpacity=0.3, gridDash=[3, 3])
         .configure_axis(grid=False)
         .configure_view(strokeWidth=0)
     )
@@ -161,7 +182,6 @@ def category_revenues_chart(apk_paid_data, operation = 'Sum'):
     category_revenues = revenue_by_category[:index + 1]
     category_revenues_df = category_revenues.to_frame().reset_index()
 
-    #TODO comentar orientacion horizontal, ordenar de menor a mayor, pie chart, titulo, tooltip, tamaño del grafico y tamaño de fuente, colores y estilos consistentes entre los bar charts y en general
     category_revenues_chart = (
         alt.Chart(category_revenues_df)
         .mark_bar(
@@ -190,9 +210,6 @@ def category_revenues_chart(apk_paid_data, operation = 'Sum'):
     return category_revenues_chart
 
 def revenue_rating_relation_chart(apk_paid_data):
-    #TODO Explicar ajustes para mejorar legibilidad cambio de escala 10 **6, Scaled revenue < 150 y mayor que 1 para eliminar el outlier/
-    #, reducir tamaño 5000 maximo para chart, mejorar legibilidad, size = 60 para que se vean mejor los puntos, height 400 para que vea mejor, interactive para que se pueda hacer zoom
-
     revenue_rating_relation_chart = alt.Chart(
         apk_paid_data.loc[(~apk_paid_data["Rating"].isna()) & (apk_paid_data["Revenue (USD millions)"] < 150) & (apk_paid_data["Revenue (USD millions)"] > 1)]
             .sort_values("Estimated Revenue", ascending=False)
@@ -224,11 +241,10 @@ def revenue_minimum_android_relation_chart(apk_paid_data, operation = 'Sum'):
     # filtrar categorias sin suficientes ingresos y ordenar
     minimum_android_revenues_df = minimum_android_revenues_df[minimum_android_revenues_df["Revenue (USD millions)"] > limit].sort_values(ascending=False, by = "Revenue (USD millions)")
 
-    #TODO comentar mismo estilo que chart anterior, filtrar categorias sin suficiente revenue
     revenue_minimum_android_relation_chart = (
         alt.Chart(minimum_android_revenues_df)
         .mark_bar(
-            color="#306998",  # Python Blue
+            color="#306998",
             cornerRadiusEnd=4,
         )
         .encode(
@@ -267,7 +283,7 @@ def revenue_by_content_rating(apk_paid_data, operation = "Sum"):
     content_rating_revenues_chart = (
         alt.Chart(revenue_by_content_rating)
         .mark_bar(
-            color="#306998",  # Python Blue
+            color="#306998",
             cornerRadiusEnd=4,
         )
         .encode(
@@ -293,7 +309,6 @@ def revenue_by_content_rating(apk_paid_data, operation = "Sum"):
 
 def extract_permissions(value):
       parsed_json = json.loads(value)
-      #print(parsed_json[0]["category"])
       permissions = set()
       for value in parsed_json:
         if "category" in value:
@@ -307,7 +322,7 @@ def permission_count(apk_data):
    permissions_chart = (
         alt.Chart(permission_counts)
         .mark_bar(
-            color="#306998",  # Python Blue
+            color="#306998",
             cornerRadiusEnd=4,
         )
         .encode(
@@ -341,11 +356,10 @@ def revenue_by_category_and_rating(apk_paid_data):
 
    # el chart tiene un limite de 5000 elementos, por lo que uso sample para obtenerlos
    sampled_revenue_data = revenue_data.sample(5000, weights="Estimated Revenue", replace=True, random_state=123)
-   #TODO explicar weights=Estimated revenue, se ha escogido por que se intenta maximizar el revenue
    revenue_by_category_and_rating = (
         alt.Chart(sampled_revenue_data)
         .mark_rect(
-            color="#306998",  # Python Blue
+            color="#306998",
             cornerRadiusEnd=4,
         )
         .encode(
